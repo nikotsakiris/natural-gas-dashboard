@@ -1,222 +1,285 @@
 // frontend/app.js
-// Renders chart + news list from DATA_SOURCE (sample now, API later)
-
 (function () {
-  function nowStr() {
-    return new Date().toLocaleString();
-  }
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-  function pad2(n) {
-    return String(n).padStart(2, "0");
-  }
+  const rangeSelect = $("#rangeSelect");
+  const markersToggle = $("#markersToggle");
+  const newsList = $("#newsList");
+  const newsEmpty = $("#newsEmpty");
+  const statusText = $("#statusText");
+  const reingestBtn = $("#reingestBtn");
+  const selectAllCatsBtn = $("#selectAllCats");
+  const clearAllCatsBtn = $("#clearAllCats");
 
-  function fmtLocalDate(ts) {
-    const d = new Date(ts);
-    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-  }
+  const chart = new window.GasChart("chart");
 
-  function fmtLocalTime(ts) {
-    const d = new Date(ts);
-    return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-  }
-
-  function ensureLabels(ev) {
-    if (!ev) return ev;
-    if (ev.t && (!ev.dateLabel || !ev.timeLabel)) {
-      ev.dateLabel = ev.dateLabel || fmtLocalDate(ev.t);
-      ev.timeLabel = ev.timeLabel || fmtLocalTime(ev.t);
-    }
-    if (!ev.url) ev.url = "#";
-    return ev;
-  }
-
-  function eventId(ev) {
-    // Prefer backend id (best), else synthesize stable id
-    if (ev && ev.id) return String(ev.id);
-    return `${ev.category || "OTHER"}|${ev.t || 0}|${(ev.title || "").length}`;
-  }
-
-  function getSelectedCategories() {
-    const checks = Array.from(document.querySelectorAll(".filter__check"));
-    const selected = new Set();
-    for (const c of checks) if (c.checked) selected.add(c.dataset.cat);
-    return selected;
-  }
-
-  let SELECTED_EVENT_ID = null;
-
-  function highlightAndScrollToTop(selectedId) {
-    const wrap = document.querySelector(".news-list-wrap");
-    const el = document.querySelector(`.news-item[data-evid="${CSS.escape(selectedId)}"]`);
-    if (!wrap || !el) return;
-
-    // highlight
-    document.querySelectorAll(".news-item").forEach((n) => n.classList.remove("news-item--selected"));
-    el.classList.add("news-item--selected");
-
-    // scroll so selected item sits at the top of the scroll container
-    // (works reliably across browsers)
-    const y = el.offsetTop;
-    wrap.scrollTo({ top: y, behavior: "smooth" });
-  }
-
-  function renderNewsList(events) {
-    const list = document.getElementById("newsList");
-    const empty = document.getElementById("newsEmpty");
-    list.innerHTML = "";
-
-    if (!events.length) {
-      empty.hidden = false;
-      return;
-    }
-    empty.hidden = true;
-
-    for (const raw of events) {
-      const ev = ensureLabels({ ...raw });
-      const id = eventId(ev);
-
-      const li = document.createElement("li");
-      li.className = "news-item";
-      li.dataset.evid = id;
-      if (SELECTED_EVENT_ID && SELECTED_EVENT_ID === id) {
-        li.classList.add("news-item--selected");
-      }
-
-      const safeUrl = ev.url && ev.url !== "#" ? ev.url : null;
-
-      li.innerHTML = `
-        <div class="news-item__top">
-          <span class="badge badge--${ev.category}">${ev.category}</span>
-          <span class="news-time">${ev.dateLabel} ${ev.timeLabel}</span>
-        </div>
-        <p class="news-title">
-          ${
-            safeUrl
-              ? `<a href="${safeUrl}" target="_blank" rel="noreferrer" onclick="event.stopPropagation()">${ev.title}</a>`
-              : `${ev.title}`
-          }
-        </p>
-        <div class="news-source">${ev.source ?? ""}</div>
-      `;
-
-      // Click news item: select + highlight + scroll-to-top + tell chart
-      li.addEventListener("click", () => {
-        SELECTED_EVENT_ID = id;
-        highlightAndScrollToTop(id);
-
-        if (window.GAS_CHART) {
-          // Select this marker on the chart and show stem only for selected
-          if (typeof window.GAS_CHART.selectEvent === "function") {
-            window.GAS_CHART.selectEvent(id, ev.t);
-          } else {
-            // fallback: at least focus time
-            window.GAS_CHART.focusTime(ev.t);
-          }
-        }
-      });
-
-      list.appendChild(li);
-    }
-  }
-
-  function wireButtons(refreshFn) {
-    const selectAll = document.getElementById("selectAllCats");
-    const clearAll = document.getElementById("clearAllCats");
-    const rangeSelect = document.getElementById("rangeSelect");
-    const toggleMarkers = document.getElementById("toggleMarkers");
-
-    if (selectAll) {
-      selectAll.addEventListener("click", () => {
-        document.querySelectorAll(".filter__check").forEach((c) => (c.checked = true));
-        refreshFn();
-      });
-    }
-
-    if (clearAll) {
-      clearAll.addEventListener("click", () => {
-        document.querySelectorAll(".filter__check").forEach((c) => (c.checked = false));
-        refreshFn();
-      });
-    }
-
-    document.querySelectorAll(".filter__check").forEach((c) => c.addEventListener("change", refreshFn));
-
-    if (toggleMarkers) {
-      toggleMarkers.addEventListener("change", (e) => {
-        if (window.GAS_CHART) window.GAS_CHART.setShowMarkers(e.target.checked);
-      });
-    }
-
-    if (rangeSelect) rangeSelect.addEventListener("change", refreshFn);
-  }
-
-  let ALL_PRICES = [];
-  let ALL_EVENTS = [];
-
-  async function loadFromDataSource() {
-    const range = document.getElementById("rangeSelect").value;
-    const series = "HENRY_HUB_SPOT";
-
-    const prices = await window.DATA_SOURCE.getPrices({ range, series });
-    let events = await window.DATA_SOURCE.getNews({ range, series });
-
-    if (prices.length >= 2) {
-      const t0 = prices[0].t;
-      const t1 = prices[prices.length - 1].t;
-      events = (events || []).filter((e) => e.t >= t0 && e.t <= t1);
-    }
-
-    ALL_PRICES = prices || [];
-    ALL_EVENTS = (events || []).map((e) => ensureLabels({ ...e }));
-
-    document.getElementById("lastUpdated").textContent = nowStr();
-    document.getElementById("instrumentLabel").textContent = "Henry Hub Spot";
-
-    return { prices: ALL_PRICES, events: ALL_EVENTS };
-  }
-
-  function refreshView() {
-    const selectedCats = getSelectedCategories();
-    const filteredEvents = (ALL_EVENTS || []).filter((e) => selectedCats.has(e.category));
-
-    renderNewsList(filteredEvents);
-
-    if (window.GAS_CHART) {
-      window.GAS_CHART.setData({ prices: ALL_PRICES, events: filteredEvents });
-      window.GAS_CHART.setShowMarkers(document.getElementById("toggleMarkers").checked);
-    }
-
-    // If something is selected but got filtered out, clear highlight
-    if (SELECTED_EVENT_ID) {
-      const exists = filteredEvents.some((e) => eventId(e) === SELECTED_EVENT_ID);
-      if (!exists) SELECTED_EVENT_ID = null;
-    }
-  }
-
-  async function regenerate() {
-    try {
-      await loadFromDataSource();
-      refreshView();
-    } catch (err) {
-      console.error(err);
-      ALL_PRICES = [];
-      ALL_EVENTS = [];
-      refreshView();
-    }
-  }
-
-  // Hook for chart marker clicks → highlight list + scroll to top
+  // Global hook used by charts.js when a marker is clicked
   window.GAS_APP = {
     onEventClicked: (ev) => {
-      const id = eventId(ev);
-      SELECTED_EVENT_ID = id;
-      highlightAndScrollToTop(id);
+      selectNewsItem(ev);
     },
   };
 
-  window.addEventListener("load", () => {
-    window.GAS_CHART = new window.GasChart("chart");
-    wireButtons(regenerate);
-    regenerate();
+  let state = {
+    range: rangeSelect ? rangeSelect.value : "1M",
+    selectedEventId: null,
+    selectedEventTs: null,
+    prices: [],
+    news: [],
+  };
+
+  function setStatus(msg) {
+    if (statusText) statusText.textContent = msg;
+  }
+
+  function apiPostJson(path, bodyObj) {
+    return fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      cache: "no-store",
+      body: JSON.stringify(bodyObj || {}),
+    }).then(async (r) => {
+      const txt = await r.text();
+      let j = null;
+      try { j = txt ? JSON.parse(txt) : null; } catch {}
+      if (!r.ok) {
+        const detail = (j && (j.detail || j.error)) ? (j.detail || j.error) : txt;
+        throw new Error(detail || `HTTP ${r.status}`);
+      }
+      return j;
+    });
+  }
+
+  async function apiGetJson(path) {
+    const r = await fetch(path, { headers: { Accept: "application/json" }, cache: "no-store" });
+    if (!r.ok) throw new Error(`HTTP ${r.status} for ${path}`);
+    return await r.json();
+  }
+
+  // Back-compat mapping:
+  // If DB still has POLICY, treat it as SUPPLY in the UI.
+  function normalizeCategory(cat) {
+    if (!cat) return "OTHER";
+    if (cat === "POLICY") return "SUPPLY";
+    return cat;
+  }
+
+  function getEnabledCategories() {
+    // Reads whatever checkboxes exist; no hardcoding.
+    const checks = $$(".filter__check");
+    const enabled = new Set();
+    for (const c of checks) {
+      if (c && c.checked) {
+        enabled.add((c.dataset.cat || "").trim());
+      }
+    }
+
+    // If user enabled SUPPLY, also enable POLICY for back-compat rows (and vice versa)
+    if (enabled.has("SUPPLY")) enabled.add("POLICY");
+    if (enabled.has("POLICY")) enabled.add("SUPPLY");
+
+    return enabled;
+  }
+
+  function formatTime(ts) {
+    const d = new Date(ts);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${y}-${m}-${day} ${hh}:${mm}`;
+  }
+
+  function eventId(ev) {
+    // Prefer backend ID
+    if (ev && ev.id) return String(ev.id);
+    // Fallback stable-ish ID
+    return `${ev.category || "OTHER"}|${ev.t || 0}|${(ev.title || "").slice(0, 40)}`;
+  }
+
+  function renderNewsList() {
+    if (!newsList) return;
+
+    const enabled = getEnabledCategories();
+
+    const filtered = (state.news || []).filter((ev) => enabled.has(normalizeCategory(ev.category)));
+
+    newsList.innerHTML = "";
+
+    if (!filtered.length) {
+      if (newsEmpty) newsEmpty.hidden = false;
+      return;
+    }
+    if (newsEmpty) newsEmpty.hidden = true;
+
+    for (const ev of filtered) {
+      const id = eventId(ev);
+      const cat = normalizeCategory(ev.category);
+
+      const li = document.createElement("li");
+      li.className = "news-item";
+      li.dataset.eventId = id;
+
+      if (state.selectedEventId === id) {
+        li.classList.add("news-item--selected");
+      }
+
+      li.innerHTML = `
+        <div class="news-item__top">
+          <span class="badge badge--${cat}">${cat}</span>
+          <span class="news-time">${formatTime(ev.t)}</span>
+        </div>
+        <p class="news-title"></p>
+        <div class="news-source"></div>
+      `;
+
+      const titleEl = li.querySelector(".news-title");
+      titleEl.textContent = ev.title || "(untitled)";
+
+      const srcEl = li.querySelector(".news-source");
+      srcEl.textContent = ev.source || "";
+
+      li.addEventListener("click", () => {
+        state.selectedEventId = id;
+        state.selectedEventTs = ev.t;
+
+        // highlight list + focus chart
+        highlightSelectedInList();
+        chart.selectEvent(id, ev.t);
+
+        // open link in new tab if present
+        if (ev.url) window.open(ev.url, "_blank", "noopener,noreferrer");
+      });
+
+      newsList.appendChild(li);
+    }
+  }
+
+  function highlightSelectedInList() {
+    if (!newsList) return;
+
+    const items = $$(".news-item");
+    for (const it of items) it.classList.remove("news-item--selected");
+
+    if (!state.selectedEventId) return;
+
+    const sel = newsList.querySelector(`.news-item[data-event-id="${cssEscape(state.selectedEventId)}"]`);
+    if (sel) {
+      sel.classList.add("news-item--selected");
+      // scroll selected into view near top
+      sel.scrollIntoView({ block: "start", behavior: "smooth" });
+    }
+  }
+
+  function selectNewsItem(ev) {
+    const id = eventId(ev);
+    state.selectedEventId = id;
+    state.selectedEventTs = ev.t;
+    renderNewsList();
+    highlightSelectedInList();
+  }
+
+  async function refreshAll() {
+    const r = state.range;
+
+    setStatus("Loading…");
+    try {
+      const prices = await apiGetJson(`/api/prices?range=${encodeURIComponent(r)}&series=HENRY_HUB_SPOT`);
+      const news = await apiGetJson(`/api/news?range=${encodeURIComponent(r)}&series=HENRY_HUB_SPOT`);
+
+      // Normalize categories for UI consistency
+      const newsNorm = (news || []).map((ev) => ({ ...ev, category: normalizeCategory(ev.category) }));
+
+      state.prices = prices || [];
+      state.news = newsNorm || [];
+
+      chart.setData({ prices: state.prices, events: state.news });
+      chart.setShowMarkers(markersToggle ? markersToggle.checked : true);
+
+      renderNewsList();
+      setStatus("Ready");
+    } catch (e) {
+      console.error(e);
+      setStatus(`Error: ${e.message || e}`);
+    }
+  }
+
+  async function onReingest() {
+    setStatus("Re-ingesting…");
+    try {
+      const res = await apiPostJson("/api/reingest", {});
+      const p = res?.prices_ingested ?? "?";
+      const n = res?.news_ingested ?? "?";
+      setStatus(`Re-ingested (prices: ${p}, news: ${n}). Refreshing…`);
+      await refreshAll();
+      setStatus("Ready");
+    } catch (e) {
+      console.error(e);
+      setStatus(`Reingest failed: ${e.message || e}`);
+    }
+  }
+
+  // ---------- Wire UI ----------
+  if (rangeSelect) {
+    rangeSelect.addEventListener("change", () => {
+      state.range = rangeSelect.value;
+      refreshAll();
+    });
+  }
+
+  if (markersToggle) {
+    markersToggle.addEventListener("change", () => {
+      chart.setShowMarkers(markersToggle.checked);
+    });
+  }
+
+  // Category filters: any change triggers rerender + chart redraw with filtered events
+  $$(".filter__check").forEach((c) => {
+    c.addEventListener("change", () => {
+      // re-render list
+      renderNewsList();
+
+      // apply same filtering to markers
+      const enabled = getEnabledCategories();
+      const filteredEvents = (state.news || []).filter((ev) => enabled.has(normalizeCategory(ev.category)));
+      chart.setData({ prices: state.prices, events: filteredEvents });
+
+      highlightSelectedInList();
+    });
   });
+
+  if (selectAllCatsBtn) {
+    selectAllCatsBtn.addEventListener("click", () => {
+      $$(".filter__check").forEach((c) => (c.checked = true));
+      // trigger rerender
+      const enabled = getEnabledCategories();
+      const filteredEvents = (state.news || []).filter((ev) => enabled.has(normalizeCategory(ev.category)));
+      chart.setData({ prices: state.prices, events: filteredEvents });
+      renderNewsList();
+      highlightSelectedInList();
+    });
+  }
+
+  if (clearAllCatsBtn) {
+    clearAllCatsBtn.addEventListener("click", () => {
+      $$(".filter__check").forEach((c) => (c.checked = false));
+      chart.setData({ prices: state.prices, events: [] });
+      renderNewsList();
+      highlightSelectedInList();
+    });
+  }
+
+  if (reingestBtn) {
+    reingestBtn.addEventListener("click", onReingest);
+  }
+
+  // ---------- init ----------
+  refreshAll();
+
+  function cssEscape(s) {
+    // minimal escape for attribute selector
+    return String(s).replace(/"/g, '\\"');
+  }
 })();

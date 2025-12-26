@@ -2,14 +2,16 @@
 from __future__ import annotations
 
 import os
-from fastapi import FastAPI, Query
+import time
+
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from backend.db import connect, init_db
 
-app = FastAPI(title="Gas Market Dashboard API", version="0.3.0")
+app = FastAPI(title="Gas Market Dashboard API", version="0.4.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,6 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.on_event("startup")
 def _startup():
     init_db()
@@ -26,6 +29,55 @@ def _startup():
 
 def _range_to_days(r: str) -> int:
     return {"1D": 1, "5D": 5, "1M": 30, "3M": 90, "6M": 180, "1Y": 365}.get(r, 30)
+
+
+@app.post("/api/reingest")
+def api_reingest():
+    """
+    Runs BOTH ingestors:
+      - EIA prices ingest (Henry Hub spot)
+      - RSS news ingest
+    Returns how many rows were upserted.
+    """
+    init_db()
+    t0 = time.time()
+    try:
+        # ---- PRICES (EIA) ----
+        from backend.ingest_eia import fetch_series, upsert_prices, DEFAULT_SERIES_ID
+
+        api_key = os.getenv("EIA_API_KEY", "").strip()
+        if not api_key:
+            raise HTTPException(status_code=500, detail="Missing EIA_API_KEY env var.")
+
+        eia_series_id = os.getenv("EIA_HH_SERIES_ID", DEFAULT_SERIES_ID).strip()
+        price_points = fetch_series(api_key, eia_series_id)
+
+        prices_series = "HENRY_HUB_SPOT"
+        prices_count = upsert_prices(prices_series, price_points, source=f"EIA:{eia_series_id}")
+
+        # ---- NEWS (RSS) ----
+        from backend.ingest_rss import fetch_feed, upsert_news
+        from backend.feeds import FEEDS
+
+        news_series = "HENRY_HUB_SPOT"
+        news_count = 0
+        if FEEDS:
+            for feed_url in FEEDS:
+                items = fetch_feed(feed_url, limit=75)
+                news_count += upsert_news(news_series, items)
+                time.sleep(0.25)  # light politeness (optional)
+
+        return {
+            "ok": True,
+            "prices_ingested": int(prices_count),
+            "news_ingested": int(news_count),
+            "elapsed_s": round(time.time() - t0, 2),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/prices")
@@ -40,7 +92,10 @@ def api_prices(
     days = _range_to_days(range)
 
     with connect() as conn:
-        row = conn.execute("SELECT MAX(t_ms) AS tmax FROM prices WHERE series = ?;", (series,)).fetchone()
+        row = conn.execute(
+            "SELECT MAX(t_ms) AS tmax FROM prices WHERE series = ?;",
+            (series,),
+        ).fetchone()
         if not row or row["tmax"] is None:
             return []
         tmax = int(row["tmax"])
@@ -62,13 +117,20 @@ def api_prices(
 @app.get("/api/news")
 def api_news(
     range: str = Query("1M", pattern="^(1D|5D|1M|3M|6M|1Y)$"),
-    series: str = Query("NG_FUTURES", pattern="^(NG_FUTURES|HENRY_HUB_SPOT)$"),
+    series: str = Query("HENRY_HUB_SPOT", pattern="^(NG_FUTURES|HENRY_HUB_SPOT)$"),
 ):
-    # Your RSS ingestion stores under NG_FUTURES by default; keep it.
+    # If you later ingest separate futures news, this will matter.
+    # For now, keep both options valid.
+    if series == "NG_FUTURES":
+        series = "HENRY_HUB_SPOT"
+
     days = _range_to_days(range)
 
     with connect() as conn:
-        row = conn.execute("SELECT MAX(t_ms) AS tmax FROM news WHERE series = ?;", (series,)).fetchone()
+        row = conn.execute(
+            "SELECT MAX(t_ms) AS tmax FROM news WHERE series = ?;",
+            (series,),
+        ).fetchone()
         if not row or row["tmax"] is None:
             return []
         tmax = int(row["tmax"])
@@ -100,6 +162,7 @@ def api_news(
 # Serve frontend from backend
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIR = os.path.join(REPO_ROOT, "frontend")
+
 if os.path.isdir(FRONTEND_DIR):
     app.mount("/frontend", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 

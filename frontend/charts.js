@@ -11,7 +11,11 @@
     LNG: getCssVar("--c-lng"),
     WEATHER: getCssVar("--c-weather"),
     OUTAGES: getCssVar("--c-outages"),
-    POLICY: getCssVar("--c-policy"),
+    SUPPLY: getCssVar("--c-supply"),
+
+    // Back-compat: if older rows still say POLICY, render them with the same color.
+    POLICY: getCssVar("--c-supply"),
+
     MACRO: getCssVar("--c-macro"),
     OTHER: getCssVar("--c-other"),
     PRICE: "rgba(91,214,255,0.95)",
@@ -71,6 +75,13 @@
 
     focusTime(tsMs) {
       this._focusTs = tsMs;
+      this.render();
+    }
+
+    // Optional API used by app.js (if present)
+    selectEvent(eventId, tsMs) {
+      this._selectedEventId = eventId != null ? String(eventId) : null;
+      this._focusTs = tsMs != null ? tsMs : null;
       this.render();
     }
 
@@ -157,6 +168,17 @@
       svg.appendChild(grid);
       svg.appendChild(axis);
 
+      // Y-axis unit label
+      const yUnit = createEl("text", {
+        x: padL + 10,
+        y: padT + 40,
+        "text-anchor": "end",
+        "font-size": "11",
+        fill: "rgba(230,237,246,0.55)"
+      });
+      yUnit.textContent = "$/MMBtu";
+      svg.appendChild(yUnit);
+
       // ----- PRICE LINE + AREA -----
       let d = "";
       for (let i = 0; i < prices.length; i++) {
@@ -170,7 +192,7 @@
       svg.appendChild(createEl("path", { d: areaD, class: "price-area" }));
       svg.appendChild(createEl("path", { d, class: "price-line" }));
 
-      // ----- FOCUS LINE (optional, shown when focusTime called) -----
+      // ----- FOCUS LINE (optional) -----
       if (this._focusTs != null) {
         const fx = x(clamp(this._focusTs, tMin, tMax));
         svg.appendChild(createEl("line", {
@@ -185,13 +207,12 @@
         const markerLayer = createEl("g", { class: "markers" });
 
         for (const ev of events) {
-          // Find nearest price point to event time
           const idx = nearestIndex(times, ev.t);
           const p = prices[idx];
           if (!p) continue;
 
           const ex = x(ev.t);
-          const ey = y(p.p); // <-- directly on price line
+          const ey = y(p.p);
 
           const id = this._eventId(ev);
           const isSelected = this._selectedEventId === id;
@@ -200,7 +221,6 @@
 
           const g = createEl("g", { class: "marker" });
 
-          // Only show a stem line when selected
           if (isSelected) {
             g.appendChild(createEl("line", {
               x1: ex, y1: ey + 7,
@@ -229,7 +249,7 @@
           g.addEventListener("click", (e) => {
             e.stopPropagation();
             this._selectedEventId = id;
-            this._focusTs = ev.t; // show focus line too (optional)
+            this._focusTs = ev.t;
             if (window.GAS_APP && typeof window.GAS_APP.onEventClicked === "function") {
               window.GAS_APP.onEventClicked(ev);
             }
@@ -241,7 +261,6 @@
 
         svg.appendChild(markerLayer);
 
-        // Click empty space to clear selection
         svg.addEventListener("click", () => {
           this._selectedEventId = null;
           this._focusTs = null;

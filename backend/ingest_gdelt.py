@@ -13,12 +13,12 @@ from backend.db import connect, init_db
 GDELT_DOC = "https://api.gdeltproject.org/api/v2/doc/doc"
 
 KEYWORDS_BY_CAT = {
-    "STORAGE": ["storage", "eia storage", "injection", "withdrawal"],
-    "LNG": ["lng", "liquefied", "export", "freeport", "sabine", "corpus", "plaquemines"],
-    "WEATHER": ["cold", "heat", "hdd", "cdd", "forecast", "winter storm"],
+    "STORAGE": ["storage", "eia storage", "injection"],
+    "LNG": ["lng", "liquefied", "natural gas export"],
+    "WEATHER": ["cold", "heat","winter storm","hurricane","freeze","arctic","polar vortex"],
     "OUTAGES": ["pipeline", "maintenance", "outage", "capacity", "force majeure"],
-    "POLICY": ["regulation", "doe", "ferc", "permit", "ban", "moratorium"],
-    "MACRO": ["rates", "inflation", "dollar", "risk-off", "recession"],
+    "SUPPLY": ["production","output","dry gas","lower 48","associated gas","marcellus","utica","haynesville","permian","eagle ford","rig count","gas rig","drilling","completion","frac spread","shut-in","takeaway capacity","pipeline constraint","flaring","breakeven"],
+    "MACRO": ["rates", "inflation", "dollar", "risk-off", "recession"]
 }
 
 

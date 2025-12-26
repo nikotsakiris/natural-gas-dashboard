@@ -17,10 +17,4 @@ FEEDS = [
     # --- Google News RSS (broad market headlines) ---
     # Natural Gas / US gas market
     "https://news.google.com/rss/search?q=%22natural+gas%22+OR+%22Henry+Hub%22+OR+%22NYMEX+natural+gas%22&hl=en-US&gl=US&ceid=US:en",
-    # LNG + exports + terminals
-    "https://news.google.com/rss/search?q=LNG+export+US+terminal+OR+Freeport+OR+Sabine+Pass&hl=en-US&gl=US&ceid=US:en",
-    # Power & grid stress (ERCOT / PJM / ISO)
-    "https://news.google.com/rss/search?q=ERCOT+OR+PJM+OR+%22power+prices%22+OR+%22grid+stress%22&hl=en-US&gl=US&ceid=US:en",
-    # Macro cross-commodity / oil & gas
-    "https://news.google.com/rss/search?q=commodities+market+OR+oil+prices+OR+gas+prices+AND+futures&hl=en-US&gl=US&ceid=US:en",
 ]
