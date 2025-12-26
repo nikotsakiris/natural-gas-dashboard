@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>US Natural Gas: Price + News Overlay</title>
+    <meta
+      name="description"
+      content="Personal dashboard to overlay US natural gas market news on price action."
+    />
+    <link rel="stylesheet" href="styles.css?v=1" />
+  </head>
+
+  <body>
+    <header class="header">
+      <div class="header__left">
+        <h1 class="title">US Natural Gas Dashboard</h1>
+        <p class="subtitle">Price action + news overlays</p>
+      </div>
+
+      <div class="header__right">
+        <div class="meta">
+          <div class="meta__row">
+            <span class="meta__label">Instrument:</span>
+            <span class="meta__value" id="instrumentLabel">NG Futures (Sample)</span>
+          </div>
+          <div class="meta__row">
+            <span class="meta__label">Last update:</span>
+            <span class="meta__value" id="lastUpdated">—</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <!-- Left: Chart + controls -->
+      <section class="panel panel--chart">
+        <div class="controls">
+          <div class="control-group">
+            <label for="rangeSelect" class="control-label">Range</label>
+            <select id="rangeSelect" class="control">
+              <option value="3M" selected>3M</option>
+              <option value="6M">6M</option>
+              <option value="1Y">1Y</option>
+            </select>
+          </div>
+
+          <div class="control-group control-group--inline">
+            <input type="checkbox" id="toggleMarkers" class="control-check" checked />
+            <label for="toggleMarkers" class="control-label control-label--inline">
+              Show news markers
+            </label>
+          </div>
+        </div>
+
+        <div class="chart-wrap">
+          <div id="chart" class="chart" aria-label="Price chart"></div>
+        </div>
+
+      </section>
+
+      <!-- Right: News list + filters -->
+      <aside class="panel panel--news">
+        <div class="news-header">
+          <h2 class="panel-title">News Feed</h2>
+          <p class="panel-subtitle">
+            Click a headline to jump the chart to that time.
+          </p>
+        </div>
+
+        <div class="filters">
+          <div class="filters__title">Filter categories</div>
+
+          <div class="filters__grid" role="group" aria-label="News category filters">
+            <label class="filter">
+              <input type="checkbox" class="filter__check" data-cat="STORAGE" checked />
+              <span class="filter__label">Storage</span>
+            </label>
+            <label class="filter">
+              <input type="checkbox" class="filter__check" data-cat="LNG" checked />
+              <span class="filter__label">LNG</span>
+            </label>
+            <label class="filter">
+              <input type="checkbox" class="filter__check" data-cat="WEATHER" checked />
+              <span class="filter__label">Weather</span>
+            </label>
+            <label class="filter">
+              <input type="checkbox" class="filter__check" data-cat="OUTAGES" checked />
+              <span class="filter__label">Outages</span>
+            </label>
+            <label class="filter">
+              <input type="checkbox" class="filter__check" data-cat="POLICY" checked />
+              <span class="filter__label">Policy</span>
+            </label>
+            <label class="filter">
+              <input type="checkbox" class="filter__check" data-cat="MACRO" checked />
+              <span class="filter__label">Macro</span>
+            </label>
+            <label class="filter">
+              <input type="checkbox" class="filter__check" data-cat="OTHER" checked />
+              <span class="filter__label">Other</span>
+            </label>
+          </div>
+
+          <div class="filters__actions">
+            <button id="selectAllCats" class="button button--secondary">Select all</button>
+            <button id="clearAllCats" class="button button--secondary">Clear all</button>
+          </div>
+        </div>
+
+        <div class="news-list-wrap">
+          <div id="newsEmpty" class="empty-state" hidden>
+            No news found for the selected filters.
+          </div>
+
+          <ol id="newsList" class="news-list" aria-label="News headlines list"></ol>
+        </div>
+
+        <footer class="footer">
+          <div class="footer__row">
+            <span class="footer__label">Mode:</span>
+            <span class="footer__value">Standalone sample data</span>
+          </div>
+          <div class="footer__row">
+            <span class="footer__label">Next:</span>
+            <span class="footer__value">Swap sample generator → backend API</span>
+          </div>
+        </footer>
+      </aside>
+    </main>
+    
+    <script src="dataSource.js"></script>
+    <script src="charts.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

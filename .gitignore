@@ -1,0 +1,5 @@
+.env
+backend/gas_dashboard.sqlite3
+backend/*.sqlite3
+__pycache__/
+.venv/
