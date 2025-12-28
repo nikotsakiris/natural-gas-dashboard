@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 
 from backend.db import connect, init_db
 
@@ -65,7 +65,7 @@ def api_reingest():
             for feed_url in FEEDS:
                 items = fetch_feed(feed_url, limit=75)
                 news_count += upsert_news(news_series, items)
-                time.sleep(0.25)  # light politeness (optional)
+                time.sleep(0.25)  # light politeness
 
         return {
             "ok": True,
@@ -159,13 +159,16 @@ def api_news(
     ]
 
 
-# Serve frontend from backend
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FRONTEND_DIR = os.path.join(REPO_ROOT, "frontend")
+# -------------------------
+# Serve frontend (STATIC)
+# -------------------------
+# You were mounting it at /frontend, but your index.html loads /styles.css, /app.js, etc.
+# So those must be served at the ROOT path ("/"), not "/frontend".
+#
+# This also keeps /api/* working because /api routes are defined above and take precedence.
+BASE_DIR = Path(__file__).resolve().parent          # .../backend
+FRONTEND_DIR = (BASE_DIR.parent / "frontend").resolve()
 
-if os.path.isdir(FRONTEND_DIR):
-    app.mount("/frontend", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
-
-    @app.get("/")
-    def root():
-        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+if FRONTEND_DIR.is_dir():
+    # Serve index.html at "/" and static assets at "/styles.css", "/app.js", etc.
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
