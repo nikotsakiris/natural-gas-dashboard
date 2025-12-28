@@ -42,9 +42,11 @@
     }).then(async (r) => {
       const txt = await r.text();
       let j = null;
-      try { j = txt ? JSON.parse(txt) : null; } catch {}
+      try {
+        j = txt ? JSON.parse(txt) : null;
+      } catch {}
       if (!r.ok) {
-        const detail = (j && (j.detail || j.error)) ? (j.detail || j.error) : txt;
+        const detail = j && (j.detail || j.error) ? j.detail || j.error : txt;
         throw new Error(detail || `HTTP ${r.status}`);
       }
       return j;
@@ -99,12 +101,15 @@
     return `${ev.category || "OTHER"}|${ev.t || 0}|${(ev.title || "").slice(0, 40)}`;
   }
 
+  function getFilteredEventsForUI() {
+    const enabled = getEnabledCategories();
+    return (state.news || []).filter((ev) => enabled.has(normalizeCategory(ev.category)));
+  }
+
   function renderNewsList() {
     if (!newsList) return;
 
-    const enabled = getEnabledCategories();
-
-    const filtered = (state.news || []).filter((ev) => enabled.has(normalizeCategory(ev.category)));
+    const filtered = getFilteredEventsForUI();
 
     newsList.innerHTML = "";
 
@@ -195,7 +200,10 @@
       state.prices = prices || [];
       state.news = newsNorm || [];
 
-      chart.setData({ prices: state.prices, events: state.news });
+      // Apply filters to markers right away (so chart matches list)
+      const filteredEvents = getFilteredEventsForUI();
+
+      chart.setData({ prices: state.prices, events: filteredEvents });
       chart.setShowMarkers(markersToggle ? markersToggle.checked : true);
 
       renderNewsList();
@@ -221,6 +229,22 @@
     }
   }
 
+  // 🔥 Auto reingest on every page load
+  async function autoReingestThenLoad() {
+    setStatus("Initializing (fresh ingest)…");
+    try {
+      const res = await apiPostJson("/api/reingest", {});
+      const p = res?.prices_ingested ?? "?";
+      const n = res?.news_ingested ?? "?";
+      setStatus(`Initialized (prices: ${p}, news: ${n}). Loading…`);
+    } catch (e) {
+      console.error("Auto reingest failed:", e);
+      // If ingest fails, still attempt to load whatever is there (or show error)
+      setStatus(`Init ingest failed: ${e.message || e}. Loading…`);
+    }
+    await refreshAll();
+  }
+
   // ---------- Wire UI ----------
   if (rangeSelect) {
     rangeSelect.addEventListener("change", () => {
@@ -242,8 +266,7 @@
       renderNewsList();
 
       // apply same filtering to markers
-      const enabled = getEnabledCategories();
-      const filteredEvents = (state.news || []).filter((ev) => enabled.has(normalizeCategory(ev.category)));
+      const filteredEvents = getFilteredEventsForUI();
       chart.setData({ prices: state.prices, events: filteredEvents });
 
       highlightSelectedInList();
@@ -253,9 +276,7 @@
   if (selectAllCatsBtn) {
     selectAllCatsBtn.addEventListener("click", () => {
       $$(".filter__check").forEach((c) => (c.checked = true));
-      // trigger rerender
-      const enabled = getEnabledCategories();
-      const filteredEvents = (state.news || []).filter((ev) => enabled.has(normalizeCategory(ev.category)));
+      const filteredEvents = getFilteredEventsForUI();
       chart.setData({ prices: state.prices, events: filteredEvents });
       renderNewsList();
       highlightSelectedInList();
@@ -276,7 +297,8 @@
   }
 
   // ---------- init ----------
-  refreshAll();
+  // Instead of refreshAll(), always rebuild DB + ingest first.
+  autoReingestThenLoad();
 
   function cssEscape(s) {
     // minimal escape for attribute selector
